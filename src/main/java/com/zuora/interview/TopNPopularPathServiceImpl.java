@@ -7,37 +7,42 @@ import java.util.*;
  */
 public class TopNPopularPathServiceImpl implements TopNPopularPathService {
 
-    private String[][] data = null;
+    private ThreadLocal<String[][]> localDatas = new ThreadLocal<>(); // the data gonna be handled
 
-    private static final String PATH_CONNECTOR = " -> ";
+    private static final String PATH_CONNECTOR = " -> "; // connector of those path( including the space )
 
+    /**
+     * Constructor of TopNPopularPathServiceImpl.
+     * A thread-safe service implementation for TopNPopularPathService.
+     */
     public TopNPopularPathServiceImpl() {
     }
 
     @Override
     public void setup(String[][] data) {
-        this.data = data;
+        this.localDatas.set(data);
     }
 
     @Override
     public String[] getTopNPopularPaths(int n) {
-        if (data == null) {
-            System.out.println("data should not be null!");
+
+        if (!checkValid(n)) {
             return null;
         }
 
-        if(n <=0 ) {
-            System.out.println("n must be a positive integer!");
-            return null;
-        }
-
+        // traverse all data and calculate total number for each path
         Map<String, Integer> pathsAndCount = groupByThreeSenquentialPath();
+        if (pathsAndCount.isEmpty()) {
+            System.out.println("can not find any three-senquential path, please add more effective data!");
+            return null;
+        }
 
-        PriorityQueue<PathNode> sorted = sortWithHeap(pathsAndCount);
+        // sort with priority queue
+        PriorityQueue<PathNode> sorted = sort(pathsAndCount);
 
         String[] result = new String[n > sorted.size() ? sorted.size() : n];
         PathNode pathNode = sorted.poll();
-        for (int i = 0; i < result.length && null != pathNode; i++) {
+        for (int i = 0; null != pathNode && i < result.length; i++) {
             result[i] = pathNode.path + ": " + pathNode.count;
             pathNode = sorted.poll();
         }
@@ -45,24 +50,71 @@ public class TopNPopularPathServiceImpl implements TopNPopularPathService {
         return result;
     }
 
+    @Override
+    public String[] mergeResult(String[] oneResult, String[] anotherResult, int n) {
+
+        PriorityQueue<String> priorityQueue = new PriorityQueue<>();
+        if (null != oneResult) {
+            for (int i = 0; i < oneResult.length; i++) {
+                priorityQueue.add(oneResult[i]);
+            }
+        }
+        if (null != anotherResult) {
+            for (int i = 0; i < anotherResult.length; i++) {
+                priorityQueue.add(anotherResult[i]);
+            }
+        }
+
+        String[] mergeResult = new String[priorityQueue.size() > n ? n : priorityQueue.size()];
+        for (int i = 0; i < mergeResult.length; i++) {
+            mergeResult[i] = priorityQueue.poll();
+        }
+
+        return mergeResult;
+    }
+
+    /**
+     * Check whether the init data and param is valid.
+     *
+     * @param n top N
+     * @return true if valid; otherwise is false
+     */
+    private boolean checkValid(int n) {
+
+        if (localDatas.get() == null) {
+            System.out.println("data should not be null!");
+            return false;
+        }
+
+        if (n <= 0) {
+            System.out.println("n must be a positive integer!");
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * Handle with the user and url path data stored in data array.
      * Store the result in map pathsAndCount like :
      * <p>
+     * key: value
      * path1: 10
      * path2: 20
      */
     private Map<String, Integer> groupByThreeSenquentialPath() {
-        Map<String, Integer> pathsAndCount = new HashMap<String, Integer>();
-        Map<String, LinkedList<String>> usersAndPaths = new HashMap<String, LinkedList<String>>();
-        for (int i = 0; i < data.length; i++) {
+        Map<String, Integer> pathsAndCount = new HashMap<>();
+        Map<String, LinkedList<String>> usersAndPaths = new HashMap<>();
+        String[][] data = localDatas.get();
 
-            // check weather exists user in map
+        for (int i = 0; i < data.length; i++) {
             if (usersAndPaths.containsKey(data[i][0])) {
+                // find user already exists
                 LinkedList<String> paths = usersAndPaths.get(data[i][0]);
                 paths.add(data[i][1]);
 
                 if (paths.size() == 3) {
+                    // find a new three-senquential path
                     StringBuilder newThreeSequentialPath = new StringBuilder(3);
                     newThreeSequentialPath.append(paths.get(0)).append(PATH_CONNECTOR).append(paths.get(1)).append(PATH_CONNECTOR).append(paths.get(2));
                     if (pathsAndCount.containsKey(newThreeSequentialPath.toString())) {
@@ -73,8 +125,8 @@ public class TopNPopularPathServiceImpl implements TopNPopularPathService {
                     }
                     paths.poll(); // move the oldest path
                 }
-
             } else {
+                // find new user
                 LinkedList<String> paths = new LinkedList<>();
                 paths.add(data[i][1]);
                 usersAndPaths.put(data[i][0], paths);
@@ -85,10 +137,10 @@ public class TopNPopularPathServiceImpl implements TopNPopularPathService {
 
 
     /**
-     * construct with max heap.
+     * Sort the path data by counts in descending order.
      */
-    private PriorityQueue<PathNode> sortWithHeap(Map<String, Integer> pathsAndCount) {
-        PriorityQueue<PathNode> priorityQueue = new PriorityQueue<PathNode>(Collections.reverseOrder());
+    private PriorityQueue<PathNode> sort(Map<String, Integer> pathsAndCount) {
+        PriorityQueue<PathNode> priorityQueue = new PriorityQueue<>(Collections.reverseOrder());
         for (String path : pathsAndCount.keySet()) {
             PathNode pathNode = new PathNode(pathsAndCount.get(path), path);
             priorityQueue.add(pathNode);
@@ -96,6 +148,9 @@ public class TopNPopularPathServiceImpl implements TopNPopularPathService {
         return priorityQueue;
     }
 
+    /**
+     * Structure for store path and path's count.
+     */
     class PathNode implements Comparable {
 
         private int count;
